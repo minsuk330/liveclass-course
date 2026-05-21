@@ -1,6 +1,8 @@
 package com.liveclass.course.domain.enrollment;
 
 import com.liveclass.course.domain.common.BaseEntity;
+import com.liveclass.course.domain.common.DomainErrorCode;
+import com.liveclass.course.domain.common.DomainException;
 import com.liveclass.course.domain.liveclass.LiveClass;
 import com.liveclass.course.domain.user.User;
 import jakarta.persistence.Column;
@@ -49,7 +51,9 @@ public class Enrollment extends BaseEntity {
 
     public void confirmPayment() {
         if (this.status != EnrollmentStatus.PENDING) {
-            throw new IllegalStateException("Only PENDING can be confirmed: " + this.status);
+            throw new DomainException(
+                    DomainErrorCode.INVALID_ENROLLMENT_STATUS,
+                    "Only PENDING can be confirmed: " + this.status);
         }
         this.status = EnrollmentStatus.CONFIRMED;
         this.paidAt = LocalDateTime.now();
@@ -57,7 +61,7 @@ public class Enrollment extends BaseEntity {
 
     public void cancel() {
         if (this.status == EnrollmentStatus.CANCELLED) {
-            throw new IllegalStateException("Already cancelled");
+            throw new DomainException(DomainErrorCode.ENROLLMENT_ALREADY_CANCELLED);
         }
         this.status = EnrollmentStatus.CANCELLED;
         this.cancelledAt = LocalDateTime.now();

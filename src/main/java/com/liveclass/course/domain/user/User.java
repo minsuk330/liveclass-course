@@ -1,6 +1,8 @@
 package com.liveclass.course.domain.user;
 
 import com.liveclass.course.domain.common.BaseEntity;
+import com.liveclass.course.global.error.CustomException;
+import com.liveclass.course.global.error.UserErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -28,4 +30,11 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserRole role;
+
+
+    public void assertCreator() {
+        if (this.getRole() != UserRole.CREATOR) {
+          throw new CustomException(UserErrorCode.USER_NOT_CREATOR);
+        }
+    }
 }

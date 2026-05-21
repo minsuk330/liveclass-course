@@ -1,6 +1,8 @@
 package com.liveclass.course.domain.liveclass;
 
 import com.liveclass.course.domain.common.BaseEntity;
+import com.liveclass.course.domain.common.DomainErrorCode;
+import com.liveclass.course.domain.common.DomainException;
 import com.liveclass.course.domain.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -61,7 +63,8 @@ public class LiveClass extends BaseEntity {
 
     public void changeStatus(ClassStatus next) {
         if (!this.status.canTransitionTo(next)) {
-            throw new IllegalStateException(
+            throw new DomainException(
+                    DomainErrorCode.INVALID_CLASS_STATUS_TRANSITION,
                     "Invalid status transition: " + this.status + " -> " + next);
         }
         this.status = next;
