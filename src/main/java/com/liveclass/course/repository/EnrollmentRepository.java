@@ -8,7 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
+public interface EnrollmentRepository
+        extends JpaRepository<Enrollment, Long>, EnrollmentRepositoryCustom {
 
     long countByLiveClass_IdAndStatusIn(Long liveClassId, Collection<EnrollmentStatus> statuses);
 

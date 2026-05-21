@@ -21,6 +21,7 @@ import com.liveclass.course.global.dto.ClassSortType;
 import com.liveclass.course.global.dto.SortDirection;
 import com.liveclass.course.service.ports.in.command.liveclass.ChangeClassStatusCommand;
 import com.liveclass.course.service.ports.in.command.liveclass.CreateClassCommand;
+import com.liveclass.course.service.ports.in.command.liveclass.SearchClassEnrollmentsCommand;
 import com.liveclass.course.service.ports.in.command.liveclass.SearchClassesCommand;
 import com.liveclass.course.service.ports.in.result.liveclass.ClassDetail;
 import com.liveclass.course.service.ports.in.result.liveclass.ClassListItem;
@@ -411,5 +412,74 @@ class DefaultLiveClassServiceTest extends IntegrationTestBase {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ClassErrorCode.NOT_CLASS_OWNER);
+    }
+
+    @Test
+    void 수강생_목록_조회_성공() {
+        LiveClass saved = createClass("강의1");
+        enrollmentRepository.save(Enrollment.builder()
+                .liveClass(saved).user(classmate)
+                .status(EnrollmentStatus.PENDING).build());
+
+        Page<Enrollment> page = liveClassService.searchEnrollments(
+                new SearchClassEnrollmentsCommand(saved.getId(), creator.getId(), null),
+                PageRequest.of(0, 10)
+        );
+
+        assertThat(page.getTotalElements()).isEqualTo(1);
+        assertThat(page.getContent().get(0).getUser().getId()).isEqualTo(classmate.getId());
+        assertThat(page.getContent().get(0).getStatus()).isEqualTo(EnrollmentStatus.PENDING);
+    }
+
+    @Test
+    void 수강생_목록_조회_status_필터_CONFIRMED만() {
+        LiveClass saved = createClass("강의1");
+        User other = userRepository.save(
+                User.builder().name("수강생2").role(UserRole.CLASSMATE).build()
+        );
+
+        enrollmentRepository.save(Enrollment.builder()
+                .liveClass(saved).user(classmate)
+                .status(EnrollmentStatus.PENDING).build());
+        enrollmentRepository.save(Enrollment.builder()
+                .liveClass(saved).user(other)
+                .status(EnrollmentStatus.CONFIRMED).build());
+
+        Page<Enrollment> confirmedOnly = liveClassService.searchEnrollments(
+                new SearchClassEnrollmentsCommand(
+                        saved.getId(), creator.getId(), EnrollmentStatus.CONFIRMED),
+                PageRequest.of(0, 10)
+        );
+
+        assertThat(confirmedOnly.getTotalElements()).isEqualTo(1);
+        assertThat(confirmedOnly.getContent().get(0).getUser().getId())
+                .isEqualTo(other.getId());
+    }
+
+    @Test
+    void 수강생_목록_조회_본인_강의_아니면_NOT_CLASS_OWNER() {
+        LiveClass saved = createClass("강의1");
+        User otherCreator = userRepository.save(
+                User.builder().name("다른강사").role(UserRole.CREATOR).build()
+        );
+
+        assertThatThrownBy(() -> liveClassService.searchEnrollments(
+                new SearchClassEnrollmentsCommand(saved.getId(), otherCreator.getId(), null),
+                PageRequest.of(0, 10)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ClassErrorCode.NOT_CLASS_OWNER);
+    }
+
+    @Test
+    void 수강생_목록_조회_존재하지_않는_강의_CLASS_NOT_FOUND() {
+        assertThatThrownBy(() -> liveClassService.searchEnrollments(
+                new SearchClassEnrollmentsCommand(999_999L, creator.getId(), null),
+                PageRequest.of(0, 10)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ClassErrorCode.CLASS_NOT_FOUND);
     }
 }

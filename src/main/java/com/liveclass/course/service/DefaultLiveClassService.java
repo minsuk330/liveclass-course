@@ -10,9 +10,11 @@ import com.liveclass.course.global.error.UserErrorCode;
 import com.liveclass.course.repository.EnrollmentRepository;
 import com.liveclass.course.repository.LiveClassRepository;
 import com.liveclass.course.repository.UserRepository;
+import com.liveclass.course.domain.enrollment.Enrollment;
 import com.liveclass.course.service.ports.in.LiveClassService;
 import com.liveclass.course.service.ports.in.command.liveclass.ChangeClassStatusCommand;
 import com.liveclass.course.service.ports.in.command.liveclass.CreateClassCommand;
+import com.liveclass.course.service.ports.in.command.liveclass.SearchClassEnrollmentsCommand;
 import com.liveclass.course.service.ports.in.command.liveclass.SearchClassesCommand;
 import com.liveclass.course.service.ports.in.result.liveclass.ClassDetail;
 import com.liveclass.course.service.ports.in.result.liveclass.ClassListItem;
@@ -108,6 +110,21 @@ public class DefaultLiveClassService implements LiveClassService {
 
         liveClass.changeStatus(command.targetStatus());
 
+    }
+
+    @Override
+    public Page<Enrollment> searchEnrollments(
+            SearchClassEnrollmentsCommand command, Pageable pageable) {
+
+        LiveClass liveClass = liveClassRepository.findByIdWithCreator(command.classId())
+                .orElseThrow(() -> new CustomException(ClassErrorCode.CLASS_NOT_FOUND));
+
+        if (!liveClass.getCreator().getId().equals(command.creatorId())) {
+            throw new CustomException(ClassErrorCode.NOT_CLASS_OWNER);
+        }
+
+        Pageable safe = sanitize(pageable);
+        return enrollmentRepository.searchByClass(command.classId(), command.status(), safe);
     }
 
     private Pageable sanitize(Pageable raw) {

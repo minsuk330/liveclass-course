@@ -12,7 +12,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 @Transactional
 @TestPropertySource(properties = {
-        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.jpa.hibernate.ddl-auto=create",
         "spring.jpa.properties.hibernate.hbm2ddl.halt_on_error=false",
         "spring.jpa.properties.hibernate.format_sql=false",
         "logging.level.org.hibernate.SQL=warn",

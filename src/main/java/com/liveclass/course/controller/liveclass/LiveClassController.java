@@ -2,9 +2,12 @@ package com.liveclass.course.controller.liveclass;
 
 import com.liveclass.course.controller.liveclass.request.ChangeClassStatusRequest;
 import com.liveclass.course.controller.liveclass.request.CreateClassRequest;
+import com.liveclass.course.controller.liveclass.request.SearchClassEnrollmentsOptions;
 import com.liveclass.course.controller.liveclass.request.SearchClassOptions;
+import com.liveclass.course.controller.liveclass.response.ClassEnrollmentItemResponse;
 import com.liveclass.course.controller.liveclass.response.ClassListItemResponse;
 import com.liveclass.course.controller.liveclass.response.ClassResponse;
+import com.liveclass.course.domain.enrollment.Enrollment;
 import com.liveclass.course.domain.liveclass.LiveClass;
 import com.liveclass.course.global.dto.response.PageResponse;
 import com.liveclass.course.service.ports.in.LiveClassService;
@@ -83,5 +86,21 @@ public class LiveClassController {
                 request.toCommand(classId, creatorId)
         );
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{classId}/enrollments")
+    @Operation(
+            summary = "강의별 수강생 목록 조회",
+            description = "본인이 개설한 강의의 수강 신청 목록을 조회합니다 (CREATOR 전용)."
+    )
+    public ResponseEntity<PageResponse<ClassEnrollmentItemResponse>> searchEnrollments(
+            @PathVariable Long classId,
+            @RequestParam @NotNull Long creatorId,
+            @ModelAttribute SearchClassEnrollmentsOptions options
+    ) {
+        Page<Enrollment> page = liveClassService.searchEnrollments(
+                options.toCommand(classId, creatorId), options.pageable()
+        );
+        return ResponseEntity.ok(PageResponse.of(page, ClassEnrollmentItemResponse::from));
     }
 }
