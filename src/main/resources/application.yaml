@@ -1,3 +1,38 @@
 spring:
   application:
     name: course
+
+  datasource:
+    url: jdbc:mysql://localhost:3311/course?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&useSSL=false
+    username: course
+    password: course
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+    open-in-view: false
+
+server:
+  port: 8080
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+  api-docs:
+    path: /v3/api-docs
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.hibernate.orm.jdbc.bind: trace
+
+app:
+  cancellation:
+    window-days: 7
