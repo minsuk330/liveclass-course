@@ -17,14 +17,22 @@ import com.liveclass.course.repository.EnrollmentRepository;
 import com.liveclass.course.repository.LiveClassRepository;
 import com.liveclass.course.repository.UserRepository;
 import com.liveclass.course.service.ports.in.LiveClassService;
+import com.liveclass.course.global.dto.ClassSortType;
+import com.liveclass.course.global.dto.SortDirection;
 import com.liveclass.course.service.ports.in.command.liveclass.CreateClassCommand;
+import com.liveclass.course.service.ports.in.command.liveclass.SearchClassesCommand;
 import com.liveclass.course.service.ports.in.result.liveclass.ClassDetail;
+import com.liveclass.course.service.ports.in.result.liveclass.ClassListItem;
 import com.liveclass.course.support.IntegrationTestBase;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 class DefaultLiveClassServiceTest extends IntegrationTestBase {
 
@@ -171,5 +179,174 @@ class DefaultLiveClassServiceTest extends IntegrationTestBase {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ClassErrorCode.CLASS_NOT_FOUND);
+    }
+
+    private LiveClass createClass(String title) {
+        return liveClassService.create(new CreateClassCommand(
+                creator.getId(),
+                title,
+                null,
+                new BigDecimal("10000"),
+                10,
+                LocalDate.now().plusDays(7),
+                LocalDate.now().plusDays(30)
+        ));
+    }
+
+    @Test
+    void 강의_목록_조회_빈_결과() {
+        Page<ClassListItem> page = liveClassService.search(
+                new SearchClassesCommand(null, null, null, null),
+                PageRequest.of(0, 10)
+        );
+
+        assertThat(page.getTotalElements()).isZero();
+        assertThat(page.getContent()).isEmpty();
+    }
+
+    @Test
+    void 강의_목록_조회_status_필터() {
+        createClass("DRAFT 강의");
+        LiveClass open = createClass("OPEN 강의");
+        open.changeStatus(ClassStatus.OPEN);
+        liveClassRepository.save(open);
+
+        Page<ClassListItem> openOnly = liveClassService.search(
+                new SearchClassesCommand(ClassStatus.OPEN, null, null, null),
+                PageRequest.of(0, 10)
+        );
+
+        assertThat(openOnly.getTotalElements()).isEqualTo(1);
+        assertThat(openOnly.getContent().get(0).liveClass().getTitle())
+                .isEqualTo("OPEN 강의");
+    }
+
+    @Test
+    void 강의_목록_조회_creatorId_필터() {
+        User otherCreator = userRepository.save(
+                User.builder().name("다른강사").role(UserRole.CREATOR).build()
+        );
+        createClass("내 강의 A");
+        createClass("내 강의 B");
+        liveClassService.create(new CreateClassCommand(
+                otherCreator.getId(), "남의 강의", null,
+                new BigDecimal("10000"), 10,
+                LocalDate.now().plusDays(7), LocalDate.now().plusDays(30)
+        ));
+
+        Page<ClassListItem> mine = liveClassService.search(
+                new SearchClassesCommand(null, creator.getId(), null, null),
+                PageRequest.of(0, 10)
+        );
+
+        assertThat(mine.getTotalElements()).isEqualTo(2);
+        assertThat(mine.getContent())
+                .extracting(i -> i.liveClass().getCreator().getId())
+                .containsOnly(creator.getId());
+    }
+
+    @Test
+    void 강의_목록_조회_currentEnrolled_일괄_집계() {
+        LiveClass c1 = createClass("강의1");
+        LiveClass c2 = createClass("강의2");
+
+        enrollmentRepository.save(Enrollment.builder()
+                .liveClass(c1).user(classmate)
+                .status(EnrollmentStatus.PENDING).build());
+        enrollmentRepository.save(Enrollment.builder()
+                .liveClass(c1).user(classmate)
+                .status(EnrollmentStatus.CONFIRMED).build());
+        enrollmentRepository.save(Enrollment.builder()
+                .liveClass(c2).user(classmate)
+                .status(EnrollmentStatus.CANCELLED).build());
+
+        Page<ClassListItem> page = liveClassService.search(
+                new SearchClassesCommand(null, null, null, null),
+                PageRequest.of(0, 10, Sort.by("createdAt").ascending())
+        );
+
+        assertThat(page.getContent()).hasSize(2);
+        ClassListItem item1 = page.getContent().stream()
+                .filter(i -> i.liveClass().getId().equals(c1.getId()))
+                .findFirst().orElseThrow();
+        ClassListItem item2 = page.getContent().stream()
+                .filter(i -> i.liveClass().getId().equals(c2.getId()))
+                .findFirst().orElseThrow();
+        assertThat(item1.currentEnrolled()).isEqualTo(2L);
+        assertThat(item2.currentEnrolled()).isZero();
+    }
+
+    @Test
+    void 정렬_화이트리스트_허용_안된_필드는_무시되고_default_적용() {
+        LiveClass first = createClass("aaa");
+        LiveClass second = createClass("bbb");
+
+        Pageable maliciousSort = PageRequest.of(0, 10, Sort.by(
+                Sort.Order.asc("password"),
+                Sort.Order.asc("internalField")
+        ));
+
+        Page<ClassListItem> page = liveClassService.search(
+                new SearchClassesCommand(null, null, null, null), maliciousSort
+        );
+
+        assertThat(page.getContent())
+                .extracting(i -> i.liveClass().getId())
+                .containsExactly(second.getId(), first.getId());
+    }
+
+    @Test
+    void 페이지_크기_100_초과시_100으로_제한() {
+        for (int i = 0; i < 3; i++) createClass("c" + i);
+
+        Page<ClassListItem> page = liveClassService.search(
+                new SearchClassesCommand(null, null, null, null),
+                PageRequest.of(0, 999)
+        );
+
+        assertThat(page.getSize()).isEqualTo(100);
+        assertThat(page.getContent()).hasSize(3);
+    }
+
+    @Test
+    void 정렬_PRICE_ASC_enum_적용() {
+        LiveClass cheap = liveClassService.create(new CreateClassCommand(
+                creator.getId(), "싼강의", null, new BigDecimal("1000"), 10,
+                LocalDate.now().plusDays(7), LocalDate.now().plusDays(30)
+        ));
+        LiveClass expensive = liveClassService.create(new CreateClassCommand(
+                creator.getId(), "비싼강의", null, new BigDecimal("100000"), 10,
+                LocalDate.now().plusDays(7), LocalDate.now().plusDays(30)
+        ));
+
+        Page<ClassListItem> page = liveClassService.search(
+                new SearchClassesCommand(null, null, ClassSortType.PRICE, SortDirection.ASC),
+                PageRequest.of(0, 10)
+        );
+
+        assertThat(page.getContent())
+                .extracting(i -> i.liveClass().getId())
+                .containsExactly(cheap.getId(), expensive.getId());
+    }
+
+    @Test
+    void 정렬_PRICE_DESC_enum_적용() {
+        LiveClass cheap = liveClassService.create(new CreateClassCommand(
+                creator.getId(), "싼강의", null, new BigDecimal("1000"), 10,
+                LocalDate.now().plusDays(7), LocalDate.now().plusDays(30)
+        ));
+        LiveClass expensive = liveClassService.create(new CreateClassCommand(
+                creator.getId(), "비싼강의", null, new BigDecimal("100000"), 10,
+                LocalDate.now().plusDays(7), LocalDate.now().plusDays(30)
+        ));
+
+        Page<ClassListItem> page = liveClassService.search(
+                new SearchClassesCommand(null, null, ClassSortType.PRICE, SortDirection.DESC),
+                PageRequest.of(0, 10)
+        );
+
+        assertThat(page.getContent())
+                .extracting(i -> i.liveClass().getId())
+                .containsExactly(expensive.getId(), cheap.getId());
     }
 }

@@ -3,7 +3,6 @@ package com.liveclass.course.service;
 import com.liveclass.course.domain.enrollment.EnrollmentStatus;
 import com.liveclass.course.domain.liveclass.LiveClass;
 import com.liveclass.course.domain.user.User;
-import com.liveclass.course.domain.user.UserRole;
 import com.liveclass.course.global.error.ClassErrorCode;
 import com.liveclass.course.global.error.CommonErrorCode;
 import com.liveclass.course.global.error.CustomException;
@@ -12,10 +11,18 @@ import com.liveclass.course.repository.EnrollmentRepository;
 import com.liveclass.course.repository.LiveClassRepository;
 import com.liveclass.course.repository.UserRepository;
 import com.liveclass.course.service.ports.in.LiveClassService;
+import com.liveclass.course.service.ports.in.command.liveclass.ChangeClassStatusCommand;
 import com.liveclass.course.service.ports.in.command.liveclass.CreateClassCommand;
+import com.liveclass.course.service.ports.in.command.liveclass.SearchClassesCommand;
 import com.liveclass.course.service.ports.in.result.liveclass.ClassDetail;
+import com.liveclass.course.service.ports.in.result.liveclass.ClassListItem;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +33,8 @@ public class DefaultLiveClassService implements LiveClassService {
 
     private static final List<EnrollmentStatus> ACTIVE_STATUSES =
             List.of(EnrollmentStatus.PENDING, EnrollmentStatus.CONFIRMED);
+
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final LiveClassRepository liveClassRepository;
     private final UserRepository userRepository;
@@ -63,6 +72,51 @@ public class DefaultLiveClassService implements LiveClassService {
                 .countByLiveClass_IdAndStatusIn(classId, ACTIVE_STATUSES);
 
         return new ClassDetail(liveClass, currentEnrolled);
+    }
+
+    @Override
+    public Page<ClassListItem> search(SearchClassesCommand command, Pageable pageable) {
+        Pageable safe = sanitize(pageable);
+
+        Page<LiveClass> page = liveClassRepository.search(command, safe);
+
+        if (page.isEmpty()) {
+            return page.map(c -> new ClassListItem(c, 0L));
+        }
+
+        List<Long> ids = page.getContent().stream().map(LiveClass::getId).toList();
+        Map<Long, Long> countMap = enrollmentRepository
+                .countActiveByLiveClassIds(ids, ACTIVE_STATUSES)
+                .stream()
+                .collect(Collectors.toMap(
+                        r -> (Long) r[0],
+                        r -> (Long) r[1]
+                ));
+
+        return page.map(c -> new ClassListItem(c, countMap.getOrDefault(c.getId(), 0L)));
+    }
+
+    @Override
+    @Transactional
+    public ClassDetail changeStatus(ChangeClassStatusCommand command) {
+        LiveClass liveClass = liveClassRepository.findByIdWithCreator(command.classId())
+                .orElseThrow(() -> new CustomException(ClassErrorCode.CLASS_NOT_FOUND));
+
+        if (!liveClass.getCreator().getId().equals(command.creatorId())) {
+            throw new CustomException(ClassErrorCode.NOT_CLASS_OWNER);
+        }
+
+        liveClass.changeStatus(command.targetStatus());
+
+        long currentEnrolled = enrollmentRepository
+                .countByLiveClass_IdAndStatusIn(liveClass.getId(), ACTIVE_STATUSES);
+
+        return new ClassDetail(liveClass, currentEnrolled);
+    }
+
+    private Pageable sanitize(Pageable raw) {
+        int size = Math.min(Math.max(raw.getPageSize(), 1), MAX_PAGE_SIZE);
+        return PageRequest.of(raw.getPageNumber(), size, raw.getSort());
     }
 
     private void validateDateRange(CreateClassCommand command) {
