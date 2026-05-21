@@ -19,6 +19,7 @@ import com.liveclass.course.repository.UserRepository;
 import com.liveclass.course.service.ports.in.LiveClassService;
 import com.liveclass.course.global.dto.ClassSortType;
 import com.liveclass.course.global.dto.SortDirection;
+import com.liveclass.course.service.ports.in.command.liveclass.ChangeClassStatusCommand;
 import com.liveclass.course.service.ports.in.command.liveclass.CreateClassCommand;
 import com.liveclass.course.service.ports.in.command.liveclass.SearchClassesCommand;
 import com.liveclass.course.service.ports.in.result.liveclass.ClassDetail;
@@ -348,5 +349,67 @@ class DefaultLiveClassServiceTest extends IntegrationTestBase {
         assertThat(page.getContent())
                 .extracting(i -> i.liveClass().getId())
                 .containsExactly(expensive.getId(), cheap.getId());
+    }
+
+    @Test
+    void 상태_전환_DRAFT_to_OPEN_성공() {
+        LiveClass saved = createClass("강의1");
+
+        liveClassService.changeStatus(new ChangeClassStatusCommand(
+                saved.getId(), creator.getId(), ClassStatus.OPEN
+        ));
+
+        ClassDetail detail = liveClassService.get(saved.getId());
+        assertThat(detail.liveClass().getStatus()).isEqualTo(ClassStatus.OPEN);
+    }
+
+    @Test
+    void 상태_전환_OPEN_to_CLOSED_성공() {
+        LiveClass saved = createClass("강의1");
+        liveClassService.changeStatus(new ChangeClassStatusCommand(
+                saved.getId(), creator.getId(), ClassStatus.OPEN
+        ));
+
+        liveClassService.changeStatus(new ChangeClassStatusCommand(
+                saved.getId(), creator.getId(), ClassStatus.CLOSED
+        ));
+
+        ClassDetail detail = liveClassService.get(saved.getId());
+        assertThat(detail.liveClass().getStatus()).isEqualTo(ClassStatus.CLOSED);
+    }
+
+    @Test
+    void 상태_전환_DRAFT_to_CLOSED_INVALID_STATUS_TRANSITION() {
+        LiveClass saved = createClass("강의1");
+
+        assertThatThrownBy(() -> liveClassService.changeStatus(new ChangeClassStatusCommand(
+                saved.getId(), creator.getId(), ClassStatus.CLOSED
+        )))
+                .isInstanceOf(com.liveclass.course.domain.common.DomainException.class);
+    }
+
+    @Test
+    void 상태_전환_존재하지_않는_강의_CLASS_NOT_FOUND() {
+        assertThatThrownBy(() -> liveClassService.changeStatus(new ChangeClassStatusCommand(
+                999_999L, creator.getId(), ClassStatus.OPEN
+        )))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ClassErrorCode.CLASS_NOT_FOUND);
+    }
+
+    @Test
+    void 상태_전환_본인_강의_아니면_NOT_CLASS_OWNER() {
+        LiveClass saved = createClass("강의1");
+        User other = userRepository.save(
+                User.builder().name("다른강사").role(UserRole.CREATOR).build()
+        );
+
+        assertThatThrownBy(() -> liveClassService.changeStatus(new ChangeClassStatusCommand(
+                saved.getId(), other.getId(), ClassStatus.OPEN
+        )))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ClassErrorCode.NOT_CLASS_OWNER);
     }
 }

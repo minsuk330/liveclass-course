@@ -1,5 +1,6 @@
 package com.liveclass.course.controller.liveclass;
 
+import com.liveclass.course.controller.liveclass.request.ChangeClassStatusRequest;
 import com.liveclass.course.controller.liveclass.request.CreateClassRequest;
 import com.liveclass.course.controller.liveclass.request.SearchClassOptions;
 import com.liveclass.course.controller.liveclass.response.ClassListItemResponse;
@@ -20,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -65,5 +67,21 @@ public class LiveClassController {
     ) {
         Page<ClassListItem> page = liveClassService.search(options.toCommand(), options.pageable());
         return ResponseEntity.ok(PageResponse.of(page, ClassListItemResponse::from));
+    }
+
+    @PatchMapping("/{classId}/status")
+    @Operation(
+            summary = "강의 상태 전환",
+            description = "DRAFT → OPEN → CLOSED 순서만 허용. 본인이 개설한 강의만 전환 가능."
+    )
+    public ResponseEntity<Void> changeStatus(
+            @PathVariable Long classId,
+            @RequestParam @NotNull Long creatorId,
+            @Valid @RequestBody ChangeClassStatusRequest request
+    ) {
+        liveClassService.changeStatus(
+                request.toCommand(classId, creatorId)
+        );
+        return ResponseEntity.noContent().build();
     }
 }

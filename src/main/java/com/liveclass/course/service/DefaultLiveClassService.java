@@ -98,7 +98,7 @@ public class DefaultLiveClassService implements LiveClassService {
 
     @Override
     @Transactional
-    public ClassDetail changeStatus(ChangeClassStatusCommand command) {
+    public void changeStatus(ChangeClassStatusCommand command) {
         LiveClass liveClass = liveClassRepository.findByIdWithCreator(command.classId())
                 .orElseThrow(() -> new CustomException(ClassErrorCode.CLASS_NOT_FOUND));
 
@@ -108,10 +108,6 @@ public class DefaultLiveClassService implements LiveClassService {
 
         liveClass.changeStatus(command.targetStatus());
 
-        long currentEnrolled = enrollmentRepository
-                .countByLiveClass_IdAndStatusIn(liveClass.getId(), ACTIVE_STATUSES);
-
-        return new ClassDetail(liveClass, currentEnrolled);
     }
 
     private Pageable sanitize(Pageable raw) {
