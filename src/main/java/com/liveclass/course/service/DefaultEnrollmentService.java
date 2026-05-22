@@ -40,7 +40,6 @@ public class DefaultEnrollmentService implements EnrollmentService {
         User user = userRepository.findById(command.userId())
                 .orElseThrow(() -> new CustomException(UserErrorCode.USER_NOT_FOUND));
 
-
         if (liveClass.getStatus() != ClassStatus.OPEN) {
             throw new CustomException(ClassErrorCode.CLASS_NOT_OPEN);
         }

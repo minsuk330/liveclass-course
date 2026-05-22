@@ -146,6 +146,8 @@ public class GlobalExceptionHandler {
             case INVALID_CLASS_STATUS_TRANSITION -> ClassErrorCode.INVALID_CLASS_STATUS_TRANSITION;
             case INVALID_ENROLLMENT_STATUS -> EnrollmentErrorCode.INVALID_ENROLLMENT_STATUS;
             case ENROLLMENT_ALREADY_CANCELLED -> EnrollmentErrorCode.ENROLLMENT_ALREADY_CANCELLED;
+            case INVALID_PAYMENT_STATUS -> PaymentErrorCode.INVALID_PAYMENT_STATUS;
+            case PAYMENT_ALREADY_CANCELLED -> PaymentErrorCode.PAYMENT_ALREADY_CANCELLED;
         };
     }
 

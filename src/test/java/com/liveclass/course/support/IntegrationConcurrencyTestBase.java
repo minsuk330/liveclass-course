@@ -34,7 +34,7 @@ public abstract class IntegrationConcurrencyTestBase {
             );
 
     private static final List<String> TABLES = List.of(
-            "enrollment", "waitlist_entry", "live_class", "users"
+            "payment", "enrollment", "waitlist_entry", "live_class", "users"
     );
 
     @Autowired

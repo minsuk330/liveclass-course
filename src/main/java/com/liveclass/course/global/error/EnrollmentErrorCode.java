@@ -12,7 +12,8 @@ public enum EnrollmentErrorCode implements ErrorCode {
     DUPLICATE_ENROLLMENT("ENROLLMENT_DUPLICATE", "이미 신청한 강의입니다.", HttpStatus.CONFLICT),
     INVALID_ENROLLMENT_STATUS("ENROLLMENT_INVALID_STATUS", "잘못된 수강 신청 상태입니다.", HttpStatus.BAD_REQUEST),
     ENROLLMENT_ALREADY_CANCELLED("ENROLLMENT_ALREADY_CANCELLED", "이미 취소된 수강 신청입니다.", HttpStatus.CONFLICT),
-    CANCELLATION_PERIOD_EXPIRED("ENROLLMENT_CANCELLATION_PERIOD_EXPIRED", "취소 가능 기간이 지났습니다.", HttpStatus.BAD_REQUEST);
+    CANCELLATION_PERIOD_EXPIRED("ENROLLMENT_CANCELLATION_PERIOD_EXPIRED", "취소 가능 기간이 지났습니다.", HttpStatus.BAD_REQUEST),
+    FORBIDDEN_ENROLLMENT_ACCESS("FORBIDDEN_ENROLLMENT_ACCESS", "본인의 수강 신청이 아닙니다.", HttpStatus.FORBIDDEN);
 
     private final String code;
     private final String message;
