@@ -13,6 +13,9 @@ public interface EnrollmentRepository
 
     long countByLiveClass_IdAndStatusIn(Long liveClassId, Collection<EnrollmentStatus> statuses);
 
+    boolean existsByLiveClass_IdAndUser_IdAndStatusIn(
+            Long liveClassId, Long userId, Collection<EnrollmentStatus> statuses);
+
     @Query("""
             select e.liveClass.id, count(e)
             from Enrollment e

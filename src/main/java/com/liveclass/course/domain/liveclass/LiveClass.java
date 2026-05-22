@@ -58,9 +58,6 @@ public class LiveClass extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     private User creator;
 
-    @Version
-    private Long version;
-
     public void changeStatus(ClassStatus next) {
         if (!this.status.canTransitionTo(next)) {
             throw new DomainException(
