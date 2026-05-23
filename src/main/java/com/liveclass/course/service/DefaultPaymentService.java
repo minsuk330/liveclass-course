@@ -19,6 +19,7 @@ import com.liveclass.course.service.ports.in.PaymentService;
 import com.liveclass.course.service.ports.in.command.payment.ConfirmPaymentCommand;
 import com.liveclass.course.service.ports.in.command.payment.InitiatePaymentCommand;
 import com.liveclass.course.service.ports.in.command.payment.PaymentCallbackCommand;
+import com.liveclass.course.service.ports.in.result.payment.ConfirmPaymentResult;
 import com.liveclass.course.service.ports.in.result.payment.InitiatePaymentResult;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -89,7 +90,7 @@ public class DefaultPaymentService implements PaymentService {
 
     @Override
     @Transactional
-    public void confirm(ConfirmPaymentCommand command) {
+    public ConfirmPaymentResult confirm(ConfirmPaymentCommand command) {
         Payment payment = paymentRepository.findByIdForUpdate(command.paymentId())
                 .orElseThrow(() -> new CustomException(PaymentErrorCode.PAYMENT_NOT_FOUND));
 
@@ -105,10 +106,11 @@ public class DefaultPaymentService implements PaymentService {
 
         if (!pgApprove.success()) {
             payment.fail(pgApprove.resultMessage());
-            throw new CustomException(PaymentErrorCode.PG_APPROVAL_FAILED);
+            return ConfirmPaymentResult.failure(payment, pgApprove.resultMessage());
         }
 
         payment.approve();
         payment.getEnrollment().confirmPayment();
+        return ConfirmPaymentResult.success(payment);
     }
 }

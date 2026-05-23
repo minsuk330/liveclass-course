@@ -19,14 +19,19 @@ import com.liveclass.course.service.ports.in.EnrollmentService;
 import com.liveclass.course.service.ports.in.LiveClassService;
 import com.liveclass.course.global.dto.EnrollmentSortType;
 import com.liveclass.course.global.dto.SortDirection;
+import com.liveclass.course.repository.EnrollmentRepository;
+import com.liveclass.course.service.ports.in.command.enrollment.CancelEnrollmentCommand;
 import com.liveclass.course.service.ports.in.command.enrollment.CreateEnrollmentCommand;
 import com.liveclass.course.service.ports.in.command.enrollment.SearchMyEnrollmentsCommand;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import com.liveclass.course.service.ports.in.command.liveclass.ChangeClassStatusCommand;
 import com.liveclass.course.service.ports.in.command.liveclass.CreateClassCommand;
 import com.liveclass.course.service.ports.in.result.enrollment.MyEnrollmentListItem;
 import com.liveclass.course.support.IntegrationTestBase;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +52,12 @@ class DefaultEnrollmentServiceTest extends IntegrationTestBase {
 
     @Autowired
     private LiveClassRepository liveClassRepository;
+
+    @Autowired
+    private EnrollmentRepository enrollmentRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private User creator;
     private User classmate;
@@ -301,5 +312,115 @@ class DefaultEnrollmentServiceTest extends IntegrationTestBase {
         assertThat(page.getTotalElements()).isEqualTo(3);
         assertThat(page.getContent()).hasSize(1);
         assertThat(page.getTotalPages()).isEqualTo(3);
+    }
+
+    // ---------- cancel ----------
+
+    private void flushAndClear() {
+        entityManager.flush();
+        entityManager.clear();
+    }
+
+    @Test
+    void 수강_취소_PENDING_즉시_가능() {
+        LiveClass cls = createOpenClass(10);
+        Enrollment e = enrollmentService.create(
+                new CreateEnrollmentCommand(classmate.getId(), cls.getId())
+        );
+
+        enrollmentService.cancel(new CancelEnrollmentCommand(e.getId(), classmate.getId()));
+        flushAndClear();
+
+        Enrollment reloaded = enrollmentRepository.findById(e.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(EnrollmentStatus.CANCELLED);
+        assertThat(reloaded.getCancelledAt()).isNotNull();
+    }
+
+    @Test
+    void 수강_취소_CONFIRMED_7일_이내_가능() {
+        LiveClass cls = createOpenClass(10);
+        Enrollment e = enrollmentService.create(
+                new CreateEnrollmentCommand(classmate.getId(), cls.getId())
+        );
+        e.confirmPayment();
+        enrollmentRepository.save(e);
+        flushAndClear();
+
+        enrollmentService.cancel(new CancelEnrollmentCommand(e.getId(), classmate.getId()));
+        flushAndClear();
+
+        Enrollment reloaded = enrollmentRepository.findById(e.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(EnrollmentStatus.CANCELLED);
+    }
+
+    @Test
+    void 수강_취소_CONFIRMED_7일_초과_불가() {
+        LiveClass cls = createOpenClass(10);
+        Enrollment e = enrollmentService.create(
+                new CreateEnrollmentCommand(classmate.getId(), cls.getId())
+        );
+        e.confirmPayment();
+        enrollmentRepository.save(e);
+        flushAndClear();
+        // 8일 전 paidAt 강제 세팅
+        entityManager.createNativeQuery(
+                "update enrollment set paid_at = :paid where id = :id"
+        )
+                .setParameter("paid", LocalDateTime.now().minusDays(8))
+                .setParameter("id", e.getId())
+                .executeUpdate();
+        entityManager.clear();
+
+        assertThatThrownBy(() -> enrollmentService.cancel(
+                new CancelEnrollmentCommand(e.getId(), classmate.getId())
+        ))
+                .isInstanceOf(com.liveclass.course.domain.common.DomainException.class)
+                .extracting("errorCode")
+                .isEqualTo(com.liveclass.course.domain.common.DomainErrorCode.ENROLLMENT_CANCELLATION_PERIOD_EXPIRED);
+    }
+
+    @Test
+    void 수강_취소_이미_CANCELLED면_ENROLLMENT_ALREADY_CANCELLED() {
+        LiveClass cls = createOpenClass(10);
+        Enrollment e = enrollmentService.create(
+                new CreateEnrollmentCommand(classmate.getId(), cls.getId())
+        );
+        enrollmentService.cancel(new CancelEnrollmentCommand(e.getId(), classmate.getId()));
+        flushAndClear();
+
+        assertThatThrownBy(() -> enrollmentService.cancel(
+                new CancelEnrollmentCommand(e.getId(), classmate.getId())
+        ))
+                .isInstanceOf(com.liveclass.course.domain.common.DomainException.class)
+                .extracting("errorCode")
+                .isEqualTo(com.liveclass.course.domain.common.DomainErrorCode.ENROLLMENT_ALREADY_CANCELLED);
+    }
+
+    @Test
+    void 수강_취소_본인_아니면_FORBIDDEN_ENROLLMENT_ACCESS() {
+        LiveClass cls = createOpenClass(10);
+        Enrollment e = enrollmentService.create(
+                new CreateEnrollmentCommand(classmate.getId(), cls.getId())
+        );
+        User other = userRepository.save(
+                User.builder().name("타인").role(UserRole.CLASSMATE).build()
+        );
+
+        assertThatThrownBy(() -> enrollmentService.cancel(
+                new CancelEnrollmentCommand(e.getId(), other.getId())
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(EnrollmentErrorCode.FORBIDDEN_ENROLLMENT_ACCESS);
+    }
+
+    @Test
+    void 수강_취소_없는_enrollmentId_ENROLLMENT_NOT_FOUND() {
+        assertThatThrownBy(() -> enrollmentService.cancel(
+                new CancelEnrollmentCommand(999_999L, classmate.getId())
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(EnrollmentErrorCode.ENROLLMENT_NOT_FOUND);
     }
 }

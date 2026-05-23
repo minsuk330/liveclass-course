@@ -1,10 +1,12 @@
 package com.liveclass.course.controller.payment;
 
 import com.liveclass.course.controller.payment.request.PaymentCallbackRequest;
+import com.liveclass.course.controller.payment.response.ConfirmPaymentResponse;
 import com.liveclass.course.controller.payment.response.InitiatePaymentResponse;
 import com.liveclass.course.service.ports.in.PaymentService;
 import com.liveclass.course.service.ports.in.command.payment.ConfirmPaymentCommand;
 import com.liveclass.course.service.ports.in.command.payment.InitiatePaymentCommand;
+import com.liveclass.course.service.ports.in.result.payment.ConfirmPaymentResult;
 import com.liveclass.course.service.ports.in.result.payment.InitiatePaymentResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -61,11 +63,13 @@ public class PaymentController {
             summary = "결제 승인 확정 (Confirm)",
             description = "서버가 Mock PG에 승인 요청을 보내고, 성공 시 Payment PAID + Enrollment CONFIRMED 전환."
     )
-    public ResponseEntity<Void> confirm(
+    public ResponseEntity<ConfirmPaymentResponse> confirm(
             @PathVariable Long paymentId,
             @RequestParam @NotNull Long userId
     ) {
-        paymentService.confirm(new ConfirmPaymentCommand(paymentId, userId));
-        return ResponseEntity.noContent().build();
+        ConfirmPaymentResult result = paymentService.confirm(
+                new ConfirmPaymentCommand(paymentId, userId)
+        );
+        return ResponseEntity.ok(ConfirmPaymentResponse.from(result));
     }
 }

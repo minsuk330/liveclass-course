@@ -59,9 +59,19 @@ public class Enrollment extends BaseEntity {
         this.paidAt = LocalDateTime.now();
     }
 
+    private static final long CONFIRMED_CANCEL_WINDOW_DAYS = 7;
+
     public void cancel() {
         if (this.status == EnrollmentStatus.CANCELLED) {
             throw new DomainException(DomainErrorCode.ENROLLMENT_ALREADY_CANCELLED);
+        }
+        if (this.status == EnrollmentStatus.CONFIRMED) {
+            if (this.paidAt == null
+                    || this.paidAt.plusDays(CONFIRMED_CANCEL_WINDOW_DAYS).isBefore(LocalDateTime.now())) {
+                throw new DomainException(
+                        DomainErrorCode.ENROLLMENT_CANCELLATION_PERIOD_EXPIRED,
+                        "결제 후 " + CONFIRMED_CANCEL_WINDOW_DAYS + "일 이내만 취소 가능합니다.");
+            }
         }
         this.status = EnrollmentStatus.CANCELLED;
         this.cancelledAt = LocalDateTime.now();
