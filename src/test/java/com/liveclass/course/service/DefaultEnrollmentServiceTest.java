@@ -17,15 +17,22 @@ import com.liveclass.course.repository.LiveClassRepository;
 import com.liveclass.course.repository.UserRepository;
 import com.liveclass.course.service.ports.in.EnrollmentService;
 import com.liveclass.course.service.ports.in.LiveClassService;
+import com.liveclass.course.global.dto.EnrollmentSortType;
+import com.liveclass.course.global.dto.SortDirection;
 import com.liveclass.course.service.ports.in.command.enrollment.CreateEnrollmentCommand;
+import com.liveclass.course.service.ports.in.command.enrollment.SearchMyEnrollmentsCommand;
 import com.liveclass.course.service.ports.in.command.liveclass.ChangeClassStatusCommand;
 import com.liveclass.course.service.ports.in.command.liveclass.CreateClassCommand;
+import com.liveclass.course.service.ports.in.result.enrollment.MyEnrollmentListItem;
 import com.liveclass.course.support.IntegrationTestBase;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 class DefaultEnrollmentServiceTest extends IntegrationTestBase {
 
@@ -166,5 +173,133 @@ class DefaultEnrollmentServiceTest extends IntegrationTestBase {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ClassErrorCode.CLASS_CAPACITY_EXCEEDED);
+    }
+
+    // ---------- searchMyEnrollments ----------
+
+    @Test
+    void 내_수강_신청_목록_기본_조회_classTitle_price_포함() {
+        LiveClass cls = createOpenClass(10);
+        enrollmentService.create(new CreateEnrollmentCommand(classmate.getId(), cls.getId()));
+
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<MyEnrollmentListItem> page = enrollmentService.searchMyEnrollments(
+                new SearchMyEnrollmentsCommand(classmate.getId(), null, null, null),
+                pageable
+        );
+
+        assertThat(page.getTotalElements()).isEqualTo(1);
+        MyEnrollmentListItem item = page.getContent().get(0);
+        assertThat(item.classId()).isEqualTo(cls.getId());
+        assertThat(item.classTitle()).isEqualTo("Spring Boot 동시성");
+        assertThat(item.status()).isEqualTo(EnrollmentStatus.PENDING);
+        assertThat(item.price()).isEqualByComparingTo("49000");
+        assertThat(item.createdAt()).isNotNull();
+        assertThat(item.paidAt()).isNull();
+        assertThat(item.cancelledAt()).isNull();
+    }
+
+    @Test
+    void 내_수강_신청_빈_결과() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<MyEnrollmentListItem> page = enrollmentService.searchMyEnrollments(
+                new SearchMyEnrollmentsCommand(classmate.getId(), null, null, null),
+                pageable
+        );
+
+        assertThat(page.getTotalElements()).isZero();
+        assertThat(page.getContent()).isEmpty();
+    }
+
+    @Test
+    void 사용자_없으면_USER_NOT_FOUND() {
+        Pageable pageable = PageRequest.of(0, 10);
+
+        assertThatThrownBy(() -> enrollmentService.searchMyEnrollments(
+                new SearchMyEnrollmentsCommand(999_999L, null, null, null),
+                pageable
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    void status_필터_PENDING만() {
+        LiveClass cls1 = createOpenClass(10);
+        LiveClass cls2 = createOpenClass(10);
+        Enrollment e1 = enrollmentService.create(new CreateEnrollmentCommand(classmate.getId(), cls1.getId()));
+        Enrollment e2 = enrollmentService.create(new CreateEnrollmentCommand(classmate.getId(), cls2.getId()));
+        e2.cancel();
+
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<MyEnrollmentListItem> page = enrollmentService.searchMyEnrollments(
+                new SearchMyEnrollmentsCommand(
+                        classmate.getId(), EnrollmentStatus.PENDING, null, null
+                ),
+                pageable
+        );
+
+        assertThat(page.getTotalElements()).isEqualTo(1);
+        assertThat(page.getContent().get(0).enrollmentId()).isEqualTo(e1.getId());
+    }
+
+    @Test
+    void status_필터_CANCELLED만() {
+        LiveClass cls1 = createOpenClass(10);
+        LiveClass cls2 = createOpenClass(10);
+        enrollmentService.create(new CreateEnrollmentCommand(classmate.getId(), cls1.getId()));
+        Enrollment e2 = enrollmentService.create(new CreateEnrollmentCommand(classmate.getId(), cls2.getId()));
+        e2.cancel();
+
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<MyEnrollmentListItem> page = enrollmentService.searchMyEnrollments(
+                new SearchMyEnrollmentsCommand(
+                        classmate.getId(), EnrollmentStatus.CANCELLED, null, null
+                ),
+                pageable
+        );
+
+        assertThat(page.getTotalElements()).isEqualTo(1);
+        assertThat(page.getContent().get(0).enrollmentId()).isEqualTo(e2.getId());
+        assertThat(page.getContent().get(0).status()).isEqualTo(EnrollmentStatus.CANCELLED);
+    }
+
+    @Test
+    void 정렬_CREATED_ASC() {
+        LiveClass cls1 = createOpenClass(10);
+        LiveClass cls2 = createOpenClass(10);
+        Enrollment first = enrollmentService.create(new CreateEnrollmentCommand(classmate.getId(), cls1.getId()));
+        Enrollment second = enrollmentService.create(new CreateEnrollmentCommand(classmate.getId(), cls2.getId()));
+
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<MyEnrollmentListItem> page = enrollmentService.searchMyEnrollments(
+                new SearchMyEnrollmentsCommand(
+                        classmate.getId(), null, EnrollmentSortType.CREATED, SortDirection.ASC
+                ),
+                pageable
+        );
+
+        assertThat(page.getContent()).hasSize(2);
+        assertThat(page.getContent().get(0).enrollmentId()).isEqualTo(first.getId());
+        assertThat(page.getContent().get(1).enrollmentId()).isEqualTo(second.getId());
+    }
+
+    @Test
+    void 페이징_size_1_total_3() {
+        for (int i = 0; i < 3; i++) {
+            LiveClass cls = createOpenClass(10);
+            enrollmentService.create(new CreateEnrollmentCommand(classmate.getId(), cls.getId()));
+        }
+
+        Pageable pageable = PageRequest.of(0, 1);
+        Page<MyEnrollmentListItem> page = enrollmentService.searchMyEnrollments(
+                new SearchMyEnrollmentsCommand(classmate.getId(), null, null, null),
+                pageable
+        );
+
+        assertThat(page.getTotalElements()).isEqualTo(3);
+        assertThat(page.getContent()).hasSize(1);
+        assertThat(page.getTotalPages()).isEqualTo(3);
     }
 }

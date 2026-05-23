@@ -14,8 +14,12 @@ import com.liveclass.course.repository.LiveClassRepository;
 import com.liveclass.course.repository.UserRepository;
 import com.liveclass.course.service.ports.in.EnrollmentService;
 import com.liveclass.course.service.ports.in.command.enrollment.CreateEnrollmentCommand;
+import com.liveclass.course.service.ports.in.command.enrollment.SearchMyEnrollmentsCommand;
+import com.liveclass.course.service.ports.in.result.enrollment.MyEnrollmentListItem;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -60,5 +64,16 @@ public class DefaultEnrollmentService implements EnrollmentService {
                 .user(user)
                 .build();
         return enrollmentRepository.save(enrollment);
+    }
+
+    @Override
+    public Page<MyEnrollmentListItem> searchMyEnrollments(
+            SearchMyEnrollmentsCommand command, Pageable pageable
+    ) {
+        if (!userRepository.existsById(command.userId())) {
+            throw new CustomException(UserErrorCode.USER_NOT_FOUND);
+        }
+        return enrollmentRepository.searchByUser(command, pageable)
+                .map(MyEnrollmentListItem::from);
     }
 }
