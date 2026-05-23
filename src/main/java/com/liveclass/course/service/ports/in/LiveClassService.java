@@ -22,4 +22,6 @@ public interface LiveClassService {
     void changeStatus(ChangeClassStatusCommand command);
 
     Page<Enrollment> searchEnrollments(SearchClassEnrollmentsCommand command, Pageable pageable);
+
+    void delete(Long classId, Long creatorId);
 }

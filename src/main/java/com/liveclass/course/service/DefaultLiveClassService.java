@@ -10,6 +10,7 @@ import com.liveclass.course.global.error.UserErrorCode;
 import com.liveclass.course.repository.EnrollmentRepository;
 import com.liveclass.course.repository.LiveClassRepository;
 import com.liveclass.course.repository.UserRepository;
+import com.liveclass.course.repository.WaitlistEntryRepository;
 import com.liveclass.course.domain.enrollment.Enrollment;
 import com.liveclass.course.service.ports.in.LiveClassService;
 import com.liveclass.course.service.ports.in.command.liveclass.ChangeClassStatusCommand;
@@ -18,6 +19,7 @@ import com.liveclass.course.service.ports.in.command.liveclass.SearchClassEnroll
 import com.liveclass.course.service.ports.in.command.liveclass.SearchClassesCommand;
 import com.liveclass.course.service.ports.in.result.liveclass.ClassDetail;
 import com.liveclass.course.service.ports.in.result.liveclass.ClassListItem;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -41,6 +43,7 @@ public class DefaultLiveClassService implements LiveClassService {
     private final LiveClassRepository liveClassRepository;
     private final UserRepository userRepository;
     private final EnrollmentRepository enrollmentRepository;
+    private final WaitlistEntryRepository waitlistEntryRepository;
 
     @Override
     @Transactional
@@ -125,6 +128,26 @@ public class DefaultLiveClassService implements LiveClassService {
 
         Pageable safe = sanitize(pageable);
         return enrollmentRepository.searchByClass(command.classId(), command.status(), safe);
+    }
+
+    @Override
+    @Transactional
+    public void delete(Long classId, Long creatorId) {
+        LiveClass liveClass = liveClassRepository.findById(classId)
+                .orElseThrow(() -> new CustomException(ClassErrorCode.CLASS_NOT_FOUND));
+
+        if (!liveClass.getCreator().getId().equals(creatorId)) {
+            throw new CustomException(ClassErrorCode.NOT_CLASS_OWNER);
+        }
+
+        long activeCount = enrollmentRepository
+                .countByLiveClass_IdAndStatusIn(classId, ACTIVE_STATUSES);
+        if (activeCount > 0) {
+            throw new CustomException(ClassErrorCode.CLASS_HAS_ACTIVE_ENROLLMENTS);
+        }
+
+        liveClass.softDelete();
+        waitlistEntryRepository.softDeleteByLiveClassId(classId, LocalDateTime.now());
     }
 
     private Pageable sanitize(Pageable raw) {

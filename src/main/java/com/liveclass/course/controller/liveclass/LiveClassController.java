@@ -22,6 +22,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -85,6 +86,19 @@ public class LiveClassController {
         liveClassService.changeStatus(
                 request.toCommand(classId, creatorId)
         );
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{classId}")
+    @Operation(
+            summary = "강의 삭제",
+            description = "강의를 soft delete 합니다. 활성 신청(PENDING/CONFIRMED)이 있으면 차단됩니다. 대기열은 cascade soft delete."
+    )
+    public ResponseEntity<Void> delete(
+            @PathVariable Long classId,
+            @RequestParam @NotNull Long creatorId
+    ) {
+        liveClassService.delete(classId, creatorId);
         return ResponseEntity.noContent().build();
     }
 

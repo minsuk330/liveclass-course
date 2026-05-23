@@ -9,6 +9,7 @@ import com.liveclass.course.domain.liveclass.ClassStatus;
 import com.liveclass.course.domain.liveclass.LiveClass;
 import com.liveclass.course.domain.user.User;
 import com.liveclass.course.domain.user.UserRole;
+import com.liveclass.course.domain.waitlistentry.WaitlistEntry;
 import com.liveclass.course.global.error.ClassErrorCode;
 import com.liveclass.course.global.error.CommonErrorCode;
 import com.liveclass.course.global.error.CustomException;
@@ -16,6 +17,11 @@ import com.liveclass.course.global.error.UserErrorCode;
 import com.liveclass.course.repository.EnrollmentRepository;
 import com.liveclass.course.repository.LiveClassRepository;
 import com.liveclass.course.repository.UserRepository;
+import com.liveclass.course.repository.WaitlistEntryRepository;
+import com.liveclass.course.service.ports.in.EnrollmentService;
+import com.liveclass.course.service.ports.in.command.enrollment.CreateEnrollmentCommand;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import com.liveclass.course.service.ports.in.LiveClassService;
 import com.liveclass.course.global.dto.ClassSortType;
 import com.liveclass.course.global.dto.SortDirection;
@@ -50,8 +56,22 @@ class DefaultLiveClassServiceTest extends IntegrationTestBase {
     @Autowired
     private EnrollmentRepository enrollmentRepository;
 
+    @Autowired
+    private WaitlistEntryRepository waitlistEntryRepository;
+
+    @Autowired
+    private EnrollmentService enrollmentService;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
     private User creator;
     private User classmate;
+
+    private void flushAndClear() {
+        entityManager.flush();
+        entityManager.clear();
+    }
 
     @BeforeEach
     void seed() {
@@ -481,5 +501,88 @@ class DefaultLiveClassServiceTest extends IntegrationTestBase {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ClassErrorCode.CLASS_NOT_FOUND);
+    }
+
+    // ---------- delete ----------
+
+    @Test
+    void 강의_삭제_성공_soft_delete_적용() {
+        LiveClass saved = createClass("강의1");
+
+        liveClassService.delete(saved.getId(), creator.getId());
+        flushAndClear();
+
+        assertThat(liveClassRepository.findById(saved.getId())).isEmpty();
+    }
+
+    @Test
+    void 강의_삭제_존재하지_않는_강의_CLASS_NOT_FOUND() {
+        assertThatThrownBy(() -> liveClassService.delete(999_999L, creator.getId()))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ClassErrorCode.CLASS_NOT_FOUND);
+    }
+
+    @Test
+    void 강의_삭제_본인_강의_아니면_NOT_CLASS_OWNER() {
+        LiveClass saved = createClass("강의1");
+        User other = userRepository.save(
+                User.builder().name("다른강사").role(UserRole.CREATOR).build()
+        );
+
+        assertThatThrownBy(() -> liveClassService.delete(saved.getId(), other.getId()))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ClassErrorCode.NOT_CLASS_OWNER);
+    }
+
+    @Test
+    void 강의_삭제_활성_신청_있으면_CLASS_HAS_ACTIVE_ENROLLMENTS() {
+        LiveClass saved = createClass("강의1");
+        liveClassService.changeStatus(new ChangeClassStatusCommand(
+                saved.getId(), creator.getId(), ClassStatus.OPEN
+        ));
+        enrollmentService.create(new CreateEnrollmentCommand(classmate.getId(), saved.getId()));
+
+        assertThatThrownBy(() -> liveClassService.delete(saved.getId(), creator.getId()))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ClassErrorCode.CLASS_HAS_ACTIVE_ENROLLMENTS);
+    }
+
+    @Test
+    void 강의_삭제_취소된_신청만_있으면_삭제_가능() {
+        LiveClass saved = createClass("강의1");
+        liveClassService.changeStatus(new ChangeClassStatusCommand(
+                saved.getId(), creator.getId(), ClassStatus.OPEN
+        ));
+        Enrollment e = enrollmentService.create(
+                new CreateEnrollmentCommand(classmate.getId(), saved.getId())
+        );
+        e.cancel();
+        enrollmentRepository.save(e);
+
+        liveClassService.delete(saved.getId(), creator.getId());
+        flushAndClear();
+
+        assertThat(liveClassRepository.findById(saved.getId())).isEmpty();
+    }
+
+    @Test
+    void 강의_삭제_시_대기열_cascade_soft_delete() {
+        LiveClass saved = createClass("강의1");
+        WaitlistEntry w1 = waitlistEntryRepository.save(WaitlistEntry.builder()
+                .liveClass(saved).user(classmate).position(1).build());
+        User classmate2 = userRepository.save(
+                User.builder().name("수강생2").role(UserRole.CLASSMATE).build()
+        );
+        WaitlistEntry w2 = waitlistEntryRepository.save(WaitlistEntry.builder()
+                .liveClass(saved).user(classmate2).position(2).build());
+
+        liveClassService.delete(saved.getId(), creator.getId());
+        flushAndClear();
+
+        assertThat(waitlistEntryRepository.findById(w1.getId())).isEmpty();
+        assertThat(waitlistEntryRepository.findById(w2.getId())).isEmpty();
     }
 }
