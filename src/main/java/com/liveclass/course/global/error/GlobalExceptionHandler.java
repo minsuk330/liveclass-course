@@ -29,9 +29,12 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = e.getErrorCode();
         logHandledException(errorCode, e);
 
+        ErrorResponse body = e.getMeta() != null
+                ? ErrorResponse.of(errorCode, e.getMeta())
+                : ErrorResponse.of(errorCode);
         return ResponseEntity
                 .status(errorCode.getStatus())
-                .body(ErrorResponse.of(errorCode));
+                .body(body);
     }
 
     @ExceptionHandler(DomainException.class)

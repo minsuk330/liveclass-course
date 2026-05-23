@@ -11,6 +11,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -20,12 +21,16 @@ import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(
-        name = "waitlist_entry",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_waitlist_class_user",
-                columnNames = {"class_id", "user_id"}
-        ),
-        indexes = @Index(name = "idx_waitlist_class", columnList = "class_id, position")
+    name = "waitlist_entry",
+    indexes = {
+        @Index(name = "idx_waitlist_class", columnList = "class_id, position")
+    },
+    uniqueConstraints = {
+        @UniqueConstraint(
+            name = "uk_waitlist_active_class_user",
+            columnNames = {"class_id", "active_user_id"}
+        )
+    }
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -42,6 +47,16 @@ public class WaitlistEntry extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Column(name = "active_user_id")
+    private Long activeUserId;
+
+
     @Column(nullable = false)
     private Integer position;
+
+    @Override
+    public void softDelete() {
+        super.softDelete();
+        this.activeUserId = null;
+    }
 }

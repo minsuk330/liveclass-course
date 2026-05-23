@@ -579,8 +579,8 @@ class DefaultLiveClassServiceTest extends IntegrationTestBase {
         WaitlistEntry w2 = waitlistEntryRepository.save(WaitlistEntry.builder()
                 .liveClass(saved).user(classmate2).position(2).build());
 
-        liveClassService.delete(saved.getId(), creator.getId());
         flushAndClear();
+      liveClassService.delete(saved.getId(), creator.getId());
 
         assertThat(waitlistEntryRepository.findById(w1.getId())).isEmpty();
         assertThat(waitlistEntryRepository.findById(w2.getId())).isEmpty();

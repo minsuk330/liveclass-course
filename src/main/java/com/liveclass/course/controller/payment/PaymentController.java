@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
 @Validated
-@Tag(name = "결제", description = "결제 처리 API (NICE PG mock)")
+@Tag(name = "[회원]결제", description = "결제 처리 API (NICE PG mock)")
 public class PaymentController {
 
     private final PaymentService paymentService;

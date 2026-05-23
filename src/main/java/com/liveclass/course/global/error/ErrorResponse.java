@@ -7,14 +7,25 @@ import java.util.Map;
 public record ErrorResponse(
         String code,
         String message,
-        Map<String, String> fieldErrors
+        Map<String, String> fieldErrors,
+        Map<String, Object> meta
 ) {
 
     public static ErrorResponse of(ErrorCode errorCode) {
         return new ErrorResponse(
                 errorCode.getCode(),
                 errorCode.getMessage(),
+                null,
                 null
+        );
+    }
+
+    public static ErrorResponse of(ErrorCode errorCode, Map<String, Object> meta) {
+        return new ErrorResponse(
+                errorCode.getCode(),
+                errorCode.getMessage(),
+                null,
+                meta
         );
     }
 
@@ -22,7 +33,8 @@ public record ErrorResponse(
         return new ErrorResponse(
                 CommonErrorCode.VALIDATION_ERROR.getCode(),
                 CommonErrorCode.VALIDATION_ERROR.getMessage(),
-                fieldErrors
+                fieldErrors,
+                null
         );
     }
 }
