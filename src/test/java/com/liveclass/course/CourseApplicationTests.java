@@ -1,10 +1,9 @@
 package com.liveclass.course;
 
+import com.liveclass.course.support.IntegrationTestBase;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
-class CourseApplicationTests {
+class CourseApplicationTests extends IntegrationTestBase {
 
 	@Test
 	void contextLoads() {

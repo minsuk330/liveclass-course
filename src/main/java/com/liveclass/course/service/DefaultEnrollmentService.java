@@ -61,6 +61,7 @@ public class DefaultEnrollmentService implements EnrollmentService {
 
         long current = enrollmentRepository
                 .countByLiveClass_IdAndStatusIn(command.classId(), ACTIVE_STATUSES);
+
         if (current >= liveClass.getCapacity()) {
             long waitlistSize = waitlistEntryRepository.countByLiveClass_Id(command.classId());
             throw new CustomException(

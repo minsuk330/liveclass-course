@@ -35,7 +35,7 @@ public class WaitlistController {
 
     private final WaitlistService waitlistService;
 
-    @GetMapping("/user/{userId}/waitlist")
+    @GetMapping("/users/{userId}/waitlist")
     @Operation(
         summary = "내 대기열 목록 조회",
         description = "사용자가 등록한 대기열 항목을 시간순(createdAt ASC)으로 조회합니다. 강의 정보 포함."

@@ -52,26 +52,27 @@ public class DefaultWaitlistService implements WaitlistService {
             throw new CustomException(ClassErrorCode.CLASS_NOT_OPEN);
         }
 
-        long active = enrollmentRepository
-                .countByLiveClass_IdAndStatusIn(command.classId(), ACTIVE_STATUSES);
-
-        if (waitlistEntryRepository.existsByLiveClass_IdAndUser_Id(
-            command.classId(), command.userId())) {
-          throw new CustomException(WaitlistErrorCode.WAITLIST_DUPLICATE);
-        }
-
-        if (active < liveClass.getCapacity()) {
-          throw new CustomException(WaitlistErrorCode.CLASS_NOT_FULL,
-              Map.of(
-                  "enrollmentEndpoint", "/api/v1/enrollments?userId={userId}",
-                  "method", "POST",
-                  "classId", command.classId()
-              ));
-        }
-
+        // 본인 상태 검증 먼저 (활성 신청자 → 활성 대기자 순)
         if (enrollmentRepository.existsByLiveClass_IdAndUser_IdAndStatusIn(
                 command.classId(), command.userId(), ACTIVE_STATUSES)) {
             throw new CustomException(WaitlistErrorCode.ENROLLMENT_ALREADY_ACTIVE);
+        }
+
+        if (waitlistEntryRepository.existsByLiveClass_IdAndUser_Id(
+                command.classId(), command.userId())) {
+            throw new CustomException(WaitlistErrorCode.WAITLIST_DUPLICATE);
+        }
+
+        // 자원 가용성 검증 마지막 (정원 안 찼으면 enrollment 직접 신청 안내)
+        long active = enrollmentRepository
+                .countByLiveClass_IdAndStatusIn(command.classId(), ACTIVE_STATUSES);
+        if (active < liveClass.getCapacity()) {
+            throw new CustomException(WaitlistErrorCode.CLASS_NOT_FULL,
+                    Map.of(
+                            "enrollmentEndpoint", "/api/v1/enrollments?userId={userId}",
+                            "method", "POST",
+                            "classId", command.classId()
+                    ));
         }
 
         int nextPosition = waitlistEntryRepository

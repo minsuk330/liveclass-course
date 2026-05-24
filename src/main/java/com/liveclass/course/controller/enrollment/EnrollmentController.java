@@ -37,7 +37,7 @@ public class EnrollmentController {
 
     private final EnrollmentService enrollmentService;
 
-    @PostMapping("/enrollment")
+    @PostMapping("/enrollments")
     @Operation(
             summary = "수강 신청",
             description = "OPEN 상태인 강의에 PENDING 상태로 신청합니다. 비관적 락으로 정원 초과 방지."
@@ -52,7 +52,7 @@ public class EnrollmentController {
                 .body(EnrollmentResponse.from(enrollment));
     }
 
-    @GetMapping("/user/{userId}/enrollment")
+    @GetMapping("/users/{userId}/enrollments")
     @Operation(
         summary = "수강 신청 목록 조회",
         description = "사용자의 수강 신청 목록을 페이지네이션 + 필터 + 정렬로 조회합니다."
@@ -68,7 +68,7 @@ public class EnrollmentController {
     }
 
 
-    @DeleteMapping("/enrollment/{enrollmentId}")
+    @DeleteMapping("/enrollments/{enrollmentId}")
     @Operation(
             summary = "수강 취소",
             description = "PENDING은 즉시, CONFIRMED는 결제 후 7일 이내만 취소 가능합니다."
