@@ -144,28 +144,17 @@ docker compose up -d mysql
 
 ### 정원 동시성 제어
 
-정원이 차는 시점에 여러 사용자가 동시에 마지막 자리에 신청하는 시나리오를 어떻게 막을지가 본 시스템의 핵심 동시성 문제입니다.
+정원이 차는 시점에 여러 사용자가 동시에 마지막 자리에 신청하는 시나리오를 어떻게 막을지가 본 시스템의 핵심 문제라 생각했습니다.
 
-검토한 방법은 다음과 같습니다.
+낙관적 락, atomic update, 비관적 락을 검토했고, 본 프로젝트에서는 `LiveClass` row에 **비관적 락**을 거는 방식을 선택했습니다.
 
-| # | 방법 | 정확성 | 성능 | 구현 복잡도 | 외부 의존 | 검증 용이성 |
-|---|---|---|---|---|---|---|
-| 1 | **비관적 락** (`SELECT ... FOR UPDATE`) on `LiveClass` | ✅ 완벽 (row 직렬화) | △ 경합 시 직렬 | ✅ 낮음 (`@Lock(PESSIMISTIC_WRITE)`) | ✅ DB only | ✅ Testcontainers + thread pool로 검증 단순 |
-| 2 | **낙관적 락** (`@Version`) | ✅ 충돌 시 retry로 보장 | ✅ 경합 없을 때 빠름 | △ retry/backoff 로직 필요 | ✅ DB only | △ retry까지 포함 시 테스트 복잡 |
-| 3 | **Atomic conditional update** (`UPDATE ... WHERE remaining > 0`) | ✅ 단일 SQL atomic | ✅ 락 없이 처리 | △ `remaining` 컬럼 denormalized, count와 drift 가능 | ✅ DB only | △ 0 row update 처리 + 정합성 검증 부담 |
-| 4 | **Unique seat 번호 할당** (`UNIQUE(class_id, seat_no)`) | ✅ DB 제약으로 강제 | ✅ 빠름 | ❌ Seat 엔티티 모델 변경 필요 | ✅ DB only | △ constraint violation 핸들링 |
-| 5 | **분산 락** (Redis Redlock, Zookeeper) | ✅ (Redlock 논쟁 있음) | ✅ DB 부하 분산 | ❌ lease/fencing/timeout | ❌ Redis/ZK 추가 | ❌ 클러스터 환경 재현 부담 |
-| 6 | **메시지 큐 직렬화** (Kafka per-class partition) | ✅ 파티션 단위 직렬 | ✅ 높은 처리량 | ❌ async 응답, MQ 운영 | ❌ Kafka 추가 | ❌ 즉시 응답 UX 손실 |
+낙관적 락은 경합이 적을 때 성능상 유리하지만, 충돌이 발생하면 retry/backoff 정책을 별도로 설계해야 합니다. 특히 마지막 한 자리 신청처럼 충돌 가능성이 높은 시나리오에서는 자동 retry가 사용자 의사와 다르게 자리를 차지할 수 있고, 수동 retry는 사용성을 떨어뜨릴 수 있다고 판단했습니다.
 
-본 프로젝트는 **1번 비관적 락**을 채택했습니다.
+atomic update 방식은 `UPDATE ... WHERE remaining > 0` 형태로 처리할 수 있어 성능상 유리합니다. 다만 이를 위해서는 `remaining` 또는 `currentEnrollmentCount` 같은 카운터 컬럼을 별도로 관리해야 합니다. 현재 도메인은 `PENDING`/`CONFIRMED` 상태 전이, 수강 취소, 대기열 자동 승격이 함께 발생하므로, 카운터 컬럼이 실제 `Enrollment` row count와 어긋나지 않도록 계속 정합성을 보장해야 합니다.
 
-선택 이유:
+이번 과제에서는 대규모 트래픽 최적화보다 정원 초과 방지 규칙을 명확하게 표현하고 테스트로 검증하는 것을 우선했습니다. 그래서 성능상 더 유리할 수 있는 atomic update 대신, JPA가 표준으로 제공하는 `PESSIMISTIC_WRITE`를 사용해 `LiveClass` row 기준으로 신청 처리를 직렬화했습니다.
 
-- **본질적으로 직렬 처리가 필요한 문제** — 마지막 한 자리 경합은 결국 한 명만 성공해야 하므로, 어떤 방법을 쓰든 그 지점은 직렬화되거나 일부 사용자가 retry/실패를 겪어야 한다. 비관적 락은 이 직렬화를 가장 단순하게 표현한다.
-- **단일 DB 모놀리식 범위** — 본 과제는 단일 인스턴스 + 단일 MySQL 구성을 가정하므로 5번 분산 락이나 6번 MQ 같은 인프라 추가는 과하다.
-- **retry 로직 회피** — 2번 낙관적 락은 충돌 시 재시도를 어떻게 노출할지 결정해야 한다 (자동 retry는 사용자 의사와 다르게 자리를 차지, 수동 retry는 UX 악화). 마지막 자리 경합처럼 충돌이 높은 시나리오에서는 비관적 락이 적합하다.
-- **모델 변경 최소화** — 3번 atomic update는 `remaining` 컬럼을 추가로 관리해야 하고 실제 count와 drift 가능성이 있다. 4번 seat 모델은 도메인 단순성을 깨뜨린다.
-- **검증 가능성** — Testcontainers MySQL + `ExecutorService` 다중 thread 동시 호출 시나리오로 직관적인 동시성 테스트가 가능하다 (`EnrollmentConcurrencyTest`, `WaitlistConcurrencyTest`, `PaymentConcurrencyTest`).
+이 방식은 별도 인프라 없이 DB 트랜잭션만으로 구현할 수 있고, Testcontainers MySQL + `ExecutorService` 다중 thread 동시 호출 시나리오로 검증하기도 쉽습니다 (`EnrollmentConcurrencyTest`, `WaitlistConcurrencyTest`, `PaymentConcurrencyTest`).
 
 실제 락 사용 흐름은 다음과 같습니다.
 
@@ -188,16 +177,18 @@ LiveClass SELECT FOR UPDATE      ← 트랜잭션 첫 read여야 함
 
 #### REPEATABLE_READ snapshot 함정
 
-InnoDB 기본 격리 수준은 `REPEATABLE_READ`이며 **트랜잭션의 첫 consistent read 시점에 snapshot이 고정**됩니다. 비관적 락 호출 전에 다른 SELECT가 먼저 실행되면, 락 이후의 SELECT가 오래된 snapshot을 보게 되어 다른 트랜잭션의 commit을 못 봅니다.
+InnoDB 기본 격리 수준은 `REPEATABLE_READ`이며 **트랜잭션의 첫 consistent read 시점에 snapshot이 고정**됩니다. `SELECT ... FOR UPDATE` 같은 locking read는 최신 커밋을 보는 current read이지만, 그 전에 일반 SELECT가 먼저 실행되어 read view가 만들어지면 이후의 일반 SELECT는 기존 snapshot을 볼 수 있습니다.
 
-예: 수강 취소 → 대기열 승격 흐름에서 동시에 두 사용자가 취소하면, 둘 다 같은 대기열 1번을 보고 같은 사람을 두 번 승격할 수 있습니다.
+예: 같은 강의의 확정 수강생 두 명이 동시에 취소하면, 각 트랜잭션이 `enrollment`를 먼저 조회하면서 snapshot이 고정될
+수 있습니다. 이후 `LiveClass` row lock을 순서대로 획득하더라도, 대기열 조회가 기존 snapshot을 기준으로 수행되면 같은
+대기열 1번을 보고 같은 사용자를 중복 승격할 위험이 있습니다.
 
 해결 방향은 두 가지였습니다.
 
 1. **`enrollmentId` 외에 `classId`도 path/요청에서 받아 락을 첫 statement로 둔다** — REST 인터페이스가 어색해짐
-2. **`READ_COMMITTED` 격리 수준** — 매 SELECT마다 최신 데이터를 읽으므로 snapshot 고정 문제가 없음
+2. **`READ_COMMITTED` 격리 수준** — 매 SELECT마다 최신 커밋 데이터를 읽어 snapshot 고정 문제를 피함
 
-2번을 선택했습니다. 격리 수준 변경의 영향은 본 메서드 범위(취소 + 승격)에 한정되며, phantom read는 락이 처리하므로 일관성 문제는 없습니다.
+2번을 선택했습니다. 격리 수준 변경의 영향은 본 메서드 범위(취소 + 승격)에 한정됩니다. 또한 동일 강의의 취소/승격 흐름은 `LiveClass` row lock으로 직렬화되므로, 이 메서드에서 문제 되는 중복 승격은 방지됩니다.
 
 ### 결제 흐름
 
@@ -521,5 +512,5 @@ AI가 제안한 내용은 실제 코드와 대조해 수정했으며, 도메인 
 
 BE 과제 추가 제출물은 아래 파일을 기준으로 확인할 수 있습니다.
 
-- `openapi.json`: 실제 애플리케이션의 `/v3/api-docs`에서 생성한 OpenAPI JSON 명세
-- `DB_스키마.sql`: JPA 엔티티 기준으로 생성된 MySQL DDL
+- [API 명세](docs/openapi.json): 애플리케이션의 `/v3/api-docs`에서 생성한 OpenAPI JSON 명세
+- [DB 스키마](docs/DB_스키마.sql): JPA 엔티티 기준으로 생성된 MySQL DDL
