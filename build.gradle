@@ -54,4 +54,8 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// 통합 + 동시성 테스트가 단일 Testcontainer를 공유하므로 직렬 실행이 안전.
+	// 병렬 fork 시 DB 상태 오염 / 컨테이너 부하 / Ryuk 정리 race 발생 가능.
+	maxParallelForks = 1
+	forkEvery = 0
 }

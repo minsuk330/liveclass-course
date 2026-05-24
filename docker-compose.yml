@@ -1,4 +1,20 @@
 services:
+  app:
+    build:
+      context: .
+    container_name: course-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/course?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_USERNAME: course
+      SPRING_DATASOURCE_PASSWORD: course
+      TZ: Asia/Seoul
+    ports:
+      - "8080:8080"
+
   mysql:
     image: mysql:8.4
     container_name: course-mysql
